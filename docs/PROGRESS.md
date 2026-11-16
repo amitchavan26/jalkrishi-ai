@@ -1,0 +1,10 @@
+G1 design tokens, dark mode, ui primitives [x]
+G2 theme consolidation and app shell hardening [x]
+G3 login and register screens [x]
+G4 dashboard [x]
+G5 farms page [x]
+G6 assess wizard [x]
+G7 result page [x]
+G8 compare and history [x]
+G9 alerts and toasts [x]
+[x] B14

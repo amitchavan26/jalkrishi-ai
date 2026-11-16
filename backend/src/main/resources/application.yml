@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: backend
+  data:
+    mongodb:
+      database: jalkrishi
+  port: ${PORT:8080}
+de:
+  flapdoodle:
+    mongodb:
+      embedded:
+        version: 6.0.5
+jalkrishi:
+  jwt:
+    secret: ${JWT_SECRET:dev-only-secret-dev-only-secret-32bytes!}
+    expiryMinutes: 120
+  suitability:
+    excellent: 1.0
+    good: 0.8
+    risky: 0.6
+  ratelimit:
+    auth-per-minute: ${AUTH_RATE_LIMIT:10}
+  cors:
+    allowed-origin: ${CORS_ORIGIN:http://localhost:5173}
+  ml:
+    url: ${ML_URL:http://localhost:8000}
+  weather:
+    base-url: https://api.open-meteo.com
+    connect-timeout: 5000
+    read-timeout: 10000
