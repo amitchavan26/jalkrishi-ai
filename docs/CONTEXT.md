@@ -4,21 +4,24 @@ Product: "Can I Grow This Crop?" Given a farm and a crop, compute a water budget
 
 ## Environment rules
 
-- Windows, PowerShell. Use `;` not `&&`. Use `.\gradlew.bat`. No `mkdir -p`, no `curl -L`, no bash scripts. Git is not installed.
+- Windows, PowerShell. Use `;` not `&&`. Use `.\gradlew.bat`. No `mkdir -p`, no `curl -L`, no bash scripts. Git is installed: run `git status` before a task and `git diff --stat` after it.
 - Python: use `.\.venv\Scripts\python.exe` inside ml-service.
-- backend/: Spring Boot 3.5, Gradle, MongoDB, package com.jalkrishi, Java 17 source level. ml-service/: FastAPI. frontend/: React JavaScript (JSX), Vite, Tailwind v4.
+- backend/: Spring Boot 3.5, Gradle, MongoDB, package com.jalkrishi. ml-service/: FastAPI. frontend/: React JavaScript (JSX), Vite, Tailwind v4.
 - DB connection string env var is SPRING_DATA_MONGODB_URI. Never put a mongodb uri in application.yml.
 - Do not create or edit gradlew, gradle/wrapper, or any existing test unless the task says so.
 - Add a dependency only if the task names it. No Lombok. No secrets in the repo (env vars with a dev default).
 - Backend tests use embedded MongoDB: @SpringBootTest + @AutoConfigureMockMvc with no explicit classes=, @MockitoBean, clean only the collections the test uses (never crops).
-- Frontend tests: Vitest + Testing Library; mock '../api'; never change visible texts, labels or test ids of existing pages.
-- A task is done only when its tests pass.
+- Frontend tests: Vitest + Testing Library; mock '../api'; never change visible texts, labels or test ids of existing pages. Test timeout is 20 s (vite.config.js).
+- A task is done only when its tests pass AND `docker compose up -d --build` still builds.
 - Never overwrite docs/CONTEXT.md or docs/PROGRESS.md unless the task says so; edit single lines instead.
+- UI work: also read docs/DESIGN_BRIEF.md.
 
 ## Model (fixed)
 
+Units: temperatures in degrees Celsius; Ra and ET0 in mm/day; Kc has no unit; Kc-days = sum of Kc over the days; ETc total (mm) = ET0 x Kc-days; demand and supply in litres.
 Tmean = (Tmax+Tmin)/2
 ET0 (mm/day) = 0.0023 _ (Tmean+17.8) _ sqrt(Tmax-Tmin) _ Ra (Tmax<Tmin -> IllegalArgumentException; Tmax==Tmin -> 0)
+Ra = extraterrestrial radiation expressed as equivalent evaporation in mm/day (a value in MJ/m2/day is multiplied by 0.408 first). It is fixed at 15.0 mm/day in v1 (about 36.8 MJ/m2/day). The engine uses Ra directly with no conversion.
 Stage for day d (1-based): walk the crop stages cumulating their days; after the last stage keep using the last stage.
 ETc(d) = Kc(stage of d) _ ET0
 Demand D (litres) = sum over d=1..horizon of ETc(d) _ areaHa _ 10000
@@ -32,12 +35,13 @@ R >= 1.0 EXCELLENT / stress LOW
 0.6 <= R < 0.8 RISKY / MODERATE
 R < 0.6 NOT_RECOMMENDED / HIGH
 Confidence: HIGH if the weather source is LIVE, LOW if FALLBACK.
+Check values: ET0(Tmax 34, Tmin 22, Ra 15) = 5.47 mm/day. Rice, 30 days, 2.5 ha, fallback weather: Kc-days 31.5, ETc 159.7 mm, demand 3,991,809 L.
 
 ## Weather (DataService)
 
 WeatherData{tmax,tmin,ra,peffDailyMm,source(LIVE|FALLBACK)}.
-Live: Open-Meteo 16-day forecast averages (tmax, tmin, peffDailyMm = 0.8 \* mean precipitation), ra fixed 15.0.
-Fallback (any failure, 5 s timeout): tmax 32, tmin 21, ra 15.0, peffDailyMm 1.5.
+Live: Open-Meteo 16-day forecast (tmax and tmin averages, peffDailyMm = 0.8 \* mean precipitation), ra fixed 15.0 mm/day.
+Fallback (any failure, 5 s timeout): tmax 32, tmin 21, ra 15.0 mm/day, peffDailyMm 1.5.
 
 ## Advice (RecommendationService)
 
@@ -60,14 +64,16 @@ Assessment {id,farmId,cropId,horizonDays,supplyLitres,demandLitres,balanceLitres
 POST /api/assessments/compare {farmId,cropIds[],horizonDays} -> [Assessment] (not saved, sorted by ratio desc)
 GET /api/alerts -> [{assessmentId,farmId,cropId,message,createdAt}]
 GET /api/reports/{assessmentId} -> {assessment, breakdown:[{horizonDays(30|60|90),supplyLitres,demandLitres,ratio,suitability}]}
-Errors: {timestamp,status,error,message}. 400 validation, 401 no/invalid token, 404 not found/not owner, 429 rate limit.
+Errors: {timestamp,status,error,message}. 400 validation, 401 no/invalid token, 404 not found/not owner, 429 rate limit (10 per minute per IP on login and register).
 ML service: POST /predict {ratio,tmax,tmin,peffDailyMm} -> {suitability,probability,source("model"|"rules")}; GET /health. The model is trained on synthetic labels derived from the rule model.
 
-## Frontend routes
+## Frontend structure
 
-Public: / (landing page, redirects to /dashboard when a token exists), /login, /register.
-Protected (inside Layout): /dashboard, /farms, /assess, /assessments/:id, /compare, /alerts, /history.
-Shared styles in src/index.css: app-bg, glass, lift, btn, btn-ghost, input-glass, row, glow-text, fade-up, pill, pill-active. Badge colors per class in src/labels.js.
+Routes. Public: / (landing page, redirects to /dashboard when a token exists), /login, /register. Protected (inside AppShell): /dashboard, /farms, /assess (3-step wizard), /assessments/:id, /compare, /alerts, /history.
+src/components/AppShell.jsx is the real layout (sidebar, top bar, mobile drawer and bottom bar). src/components/Layout.jsx is legacy and kept only for its tests.
+Theme: src/theme/ThemeProvider.jsx and ThemeToggle.jsx (class `dark` on html, localStorage jk_theme). Toasts: ToastProvider in src/components/ui. UI primitives: src/components/ui (Button, Card, Input, Select, Badge, Skeleton, EmptyState, ProgressRing, StatCard, Toast).
+Shared styles in src/index.css (tokens and classes such as glass, btn, input-glass, fade-up). Badge colors and labels in src/labels.js; chart colors in src/chartTheme.js. Charts use Chart.js through react-chartjs-2.
+Helpers: waterMath.js, geocode.js, farmInfo.js, reportCsv.js, alertPrefs.js.
 
 ## Backend packages (com.jalkrishi)
 
